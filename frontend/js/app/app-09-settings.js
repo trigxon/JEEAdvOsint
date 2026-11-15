@@ -42,7 +42,10 @@ function renderSettings() {
   if (document.getElementById('settings-email-ro')) document.getElementById('settings-email-ro').textContent = email;
   if (document.getElementById('settings-name-input')) document.getElementById('settings-name-input').value = name;
   
-  const _cachedAv = localStorage.getItem('jt_avatar') || userProfile.avatar_url;
+  // v40: DB-first — same restore law as showApp (see app-03-shell-data.js)
+  const _cachedAv = (typeof restoreAvatarSrc === 'function')
+    ? restoreAvatarSrc().src
+    : (userProfile.avatar_url || localStorage.getItem('jt_avatar'));
   if (_cachedAv) {
     const img = document.getElementById('settings-av-img');
     if (img) { img.src = _cachedAv; img.style.display = 'block'; }
@@ -177,13 +180,13 @@ function _clearAvatarImage() {
   if (rb) rb.style.display = 'none';
 }
 
-function removeAvatar() {
-  localStorage.removeItem('jt_avatar');
-  _clearAvatarImage();
-  if (sb && currentUser) {
-    saveUserProfile({ avatar_url: '' }).catch(() => {});
-  }
-  toast('Avatar removed', 'success');
+// v40: removal now clears ALL layers — DB reference, storage objects (every
+// avatar extension; a stale avatar.png would resurrect after a jpg replace),
+// and the local cache. Fire-and-forget is gone: failure is reported.
+async function removeAvatar() {
+  const out = await removeAvatarEverywhere();
+  if (out.ok) toast('Photo removed ✓', 'success');
+  else toast('Removed here, but cloud cleanup failed — it will retry next sign-in', 'warning');
 }
 
 const PRESET_AVATARS = [
@@ -245,105 +248,100 @@ async function selectPresetAvatar(svgUrl, label) {
       const picker = document.getElementById('preset-avatar-picker');
       if (picker) picker.style.display = 'none';
       
+      // v40: presets persist through the same VERIFIED round-trip as photo
+      // uploads (app-11-avatar-persist.js) — svg uploads take the
+      // contentType override path, everything else is identical: upload →
+      // verify-served → db-write → db-reselect. No more fire-and-forget.
       if (sb && currentUser) {
         try {
           const imgBlob = await (await fetch(dataUrl)).blob();
-          const path = `${currentUser.id}/avatar.svg`;
-          await sb.storage.from('avatars').upload(path, imgBlob, { upsert: true, contentType: 'image/svg+xml' });
-          const { data: urlData } = sb.storage.from('avatars').getPublicUrl(path);
-          if (urlData?.publicUrl) {
-            const verify = await fetch(urlData.publicUrl, { method: 'GET', cache: 'no-store' });
-            if (verify.ok) {
-              const busted = `${urlData.publicUrl}${urlData.publicUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
-              await saveUserProfile({ avatar_url: busted });
-              userProfile.avatar_url = busted;
-            } else {
-              console.warn('[avatar] preset uploaded but not served:', verify.status);
-            }
-          }
-        } catch(e) { console.warn('[avatar] preset cloud sync failed:', e && (e.message || e)); }
+          await sb.storage.from('avatars').upload(`${currentUser.id}/avatar.svg`, imgBlob, { upsert: true, contentType: 'image/svg+xml' });
+        } catch (e) { console.warn('[avatar] preset upload failed:', e && (e.message || e)); }
+        const out = await persistAvatarToCloud(dataUrl, null);
+        if (out.ok) {
+          _applyAvatarImage(out.url);
+          toast(`Avatar "${label}" selected — synced ✓`, 'success');
+          return;
+        }
+        console.warn('[avatar] preset persistence failed at', out.stage);
+        toast(`Avatar "${label}" shown here — cloud sync will retry`, 'warning');
+      } else {
+        toast(`Avatar "${label}" selected ✓`, 'success');
       }
-      toast(`Avatar "${label}" selected ✓`, 'success');
     };
     reader.readAsDataURL(blob);
   } catch(e) { toast('Could not apply avatar', 'error'); }
 }
 
+// v40: replaced by the verified round-trip in app-11-avatar-persist.js —
+// see persistAvatarToCloud(). Kept as the entry point the HTML calls, now
+// delegating to the persistence engine so every upload goes through the
+// same validate → optimize → upload → verify-serve → db-write → re-select
+// chain, with progress shown on the avatar itself and success reported
+// ONLY after the database round-trip confirms the stored URL.
 function handleSettingsPhoto(input) {
   const file = input.files[0]; if (!file) return;
+  input.value = '';
 
-  // The accept="image/*" attribute is only a hint (drag-drop / devtools can
-  // bypass it) — enforce the same rules the avatars bucket enforces
-  // server-side (image mime types only, 2 MB cap) before we even preview.
-  if (!file.type || !file.type.startsWith('image/')) {
-    toast('Please choose an image file (PNG / JPG / WebP)', 'error');
-    input.value = '';
-    return;
-  }
-  if (file.size > 2 * 1024 * 1024) {
-    toast('Image too large — please pick one under 2 MB', 'error');
-    input.value = '';
+  const v = avatarValidateFile(file);
+  if (!v.ok) {
+    toast(v.reason === 'size'
+      ? 'Image too large — please pick one under 2 MB'
+      : 'Please choose an image file (PNG / JPG / WebP)', 'error');
     return;
   }
 
-  const maxSize = 300 * 1024;
+  // upload state on the avatar UI: dim + spin so the save is visibly in flight
+  const av = document.getElementById('settings-av');
+  const setBusy = (on, label) => {
+    if (!av) return;
+    av.style.opacity = on ? '0.55' : '';
+    av.style.pointerEvents = on ? 'none' : '';
+    const hint = document.getElementById('settings-av-progress');
+    if (hint) { hint.textContent = on ? (label || 'Saving…') : ''; hint.style.display = on ? 'block' : 'none'; }
+  };
+
   const reader = new FileReader();
+  reader.onerror = () => { toast('Could not read that file', 'error'); };
   reader.onload = async e => {
     let dataUrl = e.target.result;
-    
-    if (file.size > maxSize) {
-      try {
-        const img = new Image();
-        await new Promise(r => { img.onload = r; img.src = dataUrl; });
-        const canvas = document.createElement('canvas');
-        const maxDim = 256;
-        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-      } catch(_) {}
-    }
-    
-    try { localStorage.setItem('jt_avatar', dataUrl); } catch(_) {  }
+    try { dataUrl = await avatarOptimize(dataUrl); } catch (_) {}
+
+    // preview the optimized image immediately (replace UX), but do NOT
+    // report success yet — persistence is not proven until the round-trip
     _applyAvatarImage(dataUrl);
-    
-    if (sb && currentUser) {
-      // v16r: cloud persistence is the part that actually keeps the photo
-      // (localStorage alone dies with storage clears / second devices), so
-      // this path now retries once, VERIFYS the object really serves, and
-      // cache-busts the stored URL so a replaced photo shows up everywhere
-      // immediately. Every failure is visible — never silent again.
-      const uploadAvatar = async () => {
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        const ext = blob.type.includes('png') ? 'png' : 'jpg';
-        const path = `${currentUser.id}/avatar.${ext}`;
-        await sb.storage.from('avatars').upload(path, blob, { upsert: true });
-        return { path, ext };
-      };
-      try {
-        let uploaded = null;
-        try { uploaded = await uploadAvatar(); }
-        catch (e1) { uploaded = await uploadAvatar(); }   // one retry — transient network/policy hiccups
-        const { data: urlData } = sb.storage.from('avatars').getPublicUrl(uploaded.path);
-        if (urlData?.publicUrl) {
-          // prove the object is really served before we trust it
-          const verify = await fetch(urlData.publicUrl, { method: 'GET', cache: 'no-store' });
-          if (!verify.ok) throw new Error(`object not served (${verify.status})`);
-          // cache-buster: the public URL is stable, so browsers/CDN would
-          // keep showing the PREVIOUS photo after a replace; ?v=<ts> busts it
-          const busted = `${urlData.publicUrl}${urlData.publicUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
-          await saveUserProfile({ avatar_url: busted });
-          userProfile.avatar_url = busted;
-        }
-        toast('Photo saved — synced to your account ✓', 'success');
-      } catch (e) {
-        console.warn('[avatar] cloud sync failed:', e && (e.message || e));
-        toast('Photo shown locally — cloud sync failed, try again', 'error');
-      }
+    setBusy(true, 'Uploading…');
+
+    if (!sb || !currentUser) {
+      try { localStorage.setItem('jt_avatar', dataUrl); } catch (_) {}  // unscoped: no uid yet; migrated on next login
+      setBusy(false);
+      toast('Signed out — photo kept on this device and will sync when you log in', 'warning');
+      return;
+    }
+
+    const out = await persistAvatarToCloud(dataUrl, (stage) => {
+      setBusy(true, stage === 'uploading' ? 'Uploading…'
+        : stage === 'verifying' ? 'Verifying…'
+        : stage === 'saving' ? 'Saving…'
+        : stage === 'confirming' ? 'Confirming…' : 'Saved ✓');
+    });
+    setBusy(false);
+
+    if (out.ok) {
+      _applyAvatarImage(out.url);
+      toast('Photo saved — synced to your account ✓', 'success');
     } else {
-      toast('Photo saved ✓', 'success');
+      // never lie about persistence: revert the preview to what the DB
+      // actually has, keep the local cache for self-heal, say what failed
+      const cur = restoreAvatarSrc();
+      if (cur.src) _applyAvatarImage(cur.src); else _clearAvatarImage();
+      avCacheSet(dataUrl);
+      console.warn('[avatar] persistence failed at', out.stage, out.error);
+      const why = out.stage === 'upload' ? 'upload failed'
+        : out.stage === 'serve' ? 'storage did not serve the photo'
+        : out.stage === 'confirm' ? 'database did not keep the reference'
+        : 'connection problem';
+      toast(`Photo NOT saved — ${why}. It stays on this device and will retry automatically.`, 'error');
     }
   };
   reader.readAsDataURL(file);

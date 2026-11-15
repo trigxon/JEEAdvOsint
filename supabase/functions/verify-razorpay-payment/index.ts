@@ -232,7 +232,7 @@ Deno.serve(async (req: Request) => {
 
       // @ts-ignore EdgeRuntime is a Supabase/Deno Deploy global, not in std types
       if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-        // @ts-ignore
+        // @ts-ignore: EdgeRuntime is a Supabase/Deno Deploy global, not in std types
         EdgeRuntime.waitUntil(writePromise);
       }
     }

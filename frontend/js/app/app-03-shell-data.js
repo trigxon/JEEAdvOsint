@@ -23,11 +23,20 @@ function showApp(name, email){
   if(elEmail)elEmail.textContent=email||'';
   if(elInit)elInit.textContent=initials;
   
-  const localAvatar = localStorage.getItem('jt_avatar');
-  if(localAvatar){
-    _applyAvatarImage(localAvatar);
-  } else if(userProfile.avatar_url){
-    _applyAvatarImage(userProfile.avatar_url);
+  // v40 RESTORE LAW: the DATABASE is the source of truth — avatar_url from
+  // user_preferences (loaded by loadUserProfile() before showApp runs)
+  // always wins. The localStorage cache is a display accelerator for the
+  // no-DB-row moment only; the old cache-first order showed a device-local
+  // photo whose cloud upload had failed and let the real one vanish on the
+  // next device. Self-heal (resyncLocalAvatarIfMissing) then back-fills
+  // the DB from the cache if the row is empty but a cache exists.
+  const _av = (typeof restoreAvatarSrc === 'function') ? restoreAvatarSrc()
+    : { src: userProfile.avatar_url || localStorage.getItem('jt_avatar') || '' };
+  if(_av.src){
+    _applyAvatarImage(_av.src);
+    if (typeof resyncLocalAvatarIfMissing === 'function') {
+      resyncLocalAvatarIfMissing().catch(() => {});
+    }
   }
   
   if(document.getElementById('settings-name-display'))document.getElementById('settings-name-display').textContent=displayName;

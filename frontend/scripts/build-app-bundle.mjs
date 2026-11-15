@@ -45,6 +45,7 @@ const DASHBOARD_ORDER = [
   'app-08-onboarding.js',
   'app-09-settings.js',
   'app-10-feedback.js',
+  'app-11-avatar-persist.js',
 ];
 
 function readAll(names) {

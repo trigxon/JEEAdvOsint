@@ -45,6 +45,16 @@ module.exports = [
       globals: {
         ...globals.browser,
         supabase: 'readonly', // Supabase UMD CDN script tag in index.html
+        // v40 avatar persistence engine (app-11-avatar-persist.js) —
+        // consumed by shell-data/onboarding/settings, bundled together
+        persistAvatarToCloud: 'readonly',
+        restoreAvatarSrc: 'readonly',
+        resyncLocalAvatarIfMissing: 'readonly',
+        removeAvatarEverywhere: 'readonly',
+        avatarValidateFile: 'readonly',
+        avatarOptimize: 'readonly',
+        avCacheSet: 'readonly',
+        _clearAvatarImage: 'readonly', // defined in app-09-settings.js, same bundle
         CANONICAL_SYLLABUS: 'readonly',
         S: 'writable',
         _handleRoute: 'readonly',

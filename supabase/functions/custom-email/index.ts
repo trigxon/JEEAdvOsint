@@ -23,7 +23,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { type, subject, html, text, to_user_ids, to_emails, from_name, from_address, preview_only, is_raw_html } = body;
+    const { type, subject, html, text, to_user_ids, to_emails, from_name, from_address, preview_only } = body;
 
     if (!subject?.trim()) return new Response(JSON.stringify({ error: "Subject required" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
     if (!html?.trim() && !text?.trim()) return new Response(JSON.stringify({ error: "Body required" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -38,7 +38,7 @@ serve(async (req) => {
         try {
           const { data } = await supabase.auth.admin.getUserById(uid);
           if (data?.user?.email) recipients.push({ email: data.user.email, name: data.user.user_metadata?.full_name || data.user.email.split("@")[0] });
-        } catch (_) {}
+        } catch (_e) { /* unreachable user row — skip, not a send failure */ }
       }
     } else if (type === "all_active") {
       const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
@@ -47,7 +47,7 @@ serve(async (req) => {
         try {
           const { data } = await supabase.auth.admin.getUserById(p.user_id);
           if (data?.user?.email) recipients.push({ email: data.user.email, name: data.user.user_metadata?.full_name || data.user.email.split("@")[0] });
-        } catch (_) {}
+        } catch (_e) { /* unreachable user row — skip, not a send failure */ }
       }
     } else if (type === "all") {
       const { data: prefs } = await supabase.from("user_preferences").select("user_id");
@@ -55,7 +55,7 @@ serve(async (req) => {
         try {
           const { data } = await supabase.auth.admin.getUserById(p.user_id);
           if (data?.user?.email) recipients.push({ email: data.user.email, name: data.user.user_metadata?.full_name || data.user.email.split("@")[0] });
-        } catch (_) {}
+        } catch (_e) { /* unreachable user row — skip, not a send failure */ }
       }
     }
 
@@ -71,7 +71,7 @@ serve(async (req) => {
     // is_raw_html=false/absent → also send as-is (compose mode now builds full HTML via buildEmailHTML)
     const fromAddr = (from_address === "5073340abdulrehmankhandurrani@gmail.com") ? "5073340abdulrehmankhandurrani@gmail.com" : "5073340abdulrehmankhandurrani@gmail.com";
     const from = `${from_name || "JEE ADV OSINT"} <${fromAddr}>`;
-    let sent = 0, failed = 0, failedEmails: string[] = [];
+    let sent = 0, failed = 0; const failedEmails: string[] = [];
 
     for (let i = 0; i < recipients.length; i += 10) {
       const batch = recipients.slice(i, i + 10);
@@ -98,7 +98,7 @@ serve(async (req) => {
             }),
           });
           if (res.ok) { sent++; } else { failed++; failedEmails.push(r.email); }
-        } catch (_) { failed++; failedEmails.push(r.email); }
+        } catch (_e) { failed++; failedEmails.push(r.email); }
       }));
       if (i + 10 < recipients.length) await new Promise(r => setTimeout(r, 300));
     }
@@ -106,7 +106,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, sent, failed, total: recipients.length, failedEmails: failedEmails.slice(0, 10) }),
       { headers: { ...CORS, "Content-Type": "application/json" } });
 
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
   }
 });

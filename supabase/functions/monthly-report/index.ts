@@ -11,6 +11,21 @@ const APP_URL = Deno.env.get("APP_URL") || "https://jee-adv-osint.vercel.app";
 
 const INACTIVE_DAYS = 20;
 
+// Row shapes as selected by this function (see database/sql migrations):
+// tests/date+exam+total+max, hours/date+lecture+practice+revision+total,
+// backlogs/done, syllabus/subject+theory+practice.
+interface TestRow { date: string; exam: string; total: number; max: number }
+interface HourRow { date: string; lecture: number; practice: number; revision: number; total: number }
+interface BacklogRow { done: boolean }
+interface SyllabusRow { subject: string; theory: boolean; practice: boolean }
+
+interface MonthlyStats {
+  tests: { total: number; mains: number; adv: number; bestScore: string; avgScore: string };
+  hours: { total: string; lecture: string; practice: string; revision: string; studyDays: number; avgPerDay: string; bestDay: string };
+  syllabus: { [subject: string]: { done: number; total: number } };
+  backlogs: { pending: number; cleared: number };
+}
+
 serve(async (req) => {
   
   const authHeader = req.headers.get("Authorization");
@@ -86,7 +101,7 @@ serve(async (req) => {
       const syllabus = sylRes.data || [];
 
       
-      const stats = calculateStats(tests, hours, backlogs, syllabus, monthStartStr, monthEndStr);
+      const stats = calculateStats(tests, hours, backlogs, syllabus);
 
       
       const pdfBase64 = generateReportPDF(name, monthName, stats, tests, hours);
@@ -136,7 +151,7 @@ serve(async (req) => {
   );
 });
 
-function calculateStats(tests: any[], hours: any[], backlogs: any[], syllabus: any[], monthStart: string, monthEnd: string) {
+function calculateStats(tests: TestRow[], hours: HourRow[], backlogs: BacklogRow[], syllabus: SyllabusRow[]): MonthlyStats {
   
   const mainsTests = tests.filter(t => t.exam === "mains");
   const advTests = tests.filter(t => t.exam === "advanced");
@@ -145,16 +160,16 @@ function calculateStats(tests: any[], hours: any[], backlogs: any[], syllabus: a
   const avgScore = allScores.length ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
 
   
-  const totalHours = hours.reduce((a: number, b: any) => a + (b.total || 0), 0);
-  const lectureHours = hours.reduce((a: number, b: any) => a + (b.lecture || 0), 0);
-  const practiceHours = hours.reduce((a: number, b: any) => a + (b.practice || 0), 0);
-  const revisionHours = hours.reduce((a: number, b: any) => a + (b.revision || 0), 0);
-  const studyDays = new Set(hours.map((h: any) => h.date)).size;
+  const totalHours = hours.reduce((a: number, b: HourRow) => a + (b.total || 0), 0);
+  const lectureHours = hours.reduce((a: number, b: HourRow) => a + (b.lecture || 0), 0);
+  const practiceHours = hours.reduce((a: number, b: HourRow) => a + (b.practice || 0), 0);
+  const revisionHours = hours.reduce((a: number, b: HourRow) => a + (b.revision || 0), 0);
+  const studyDays = new Set(hours.map((h: HourRow) => h.date)).size;
   const avgHoursPerDay = studyDays ? (totalHours / studyDays).toFixed(1) : "0";
 
   
   const dayMap: { [key: string]: number } = {};
-  hours.forEach((h: any) => { dayMap[h.date] = (dayMap[h.date] || 0) + (h.total || 0); });
+  hours.forEach((h: HourRow) => { dayMap[h.date] = (dayMap[h.date] || 0) + (h.total || 0); });
   const bestDayTotal = Object.values(dayMap).length ? Math.max(...Object.values(dayMap)) : 0;
 
   
@@ -163,7 +178,7 @@ function calculateStats(tests: any[], hours: any[], backlogs: any[], syllabus: a
     chemistry: { done: 0, total: 0 },
     maths: { done: 0, total: 0 },
   };
-  syllabus.forEach((ch: any) => {
+  syllabus.forEach((ch: SyllabusRow) => {
     const s = ch.subject;
     if (subjectProgress[s]) {
       subjectProgress[s].total++;
@@ -172,8 +187,8 @@ function calculateStats(tests: any[], hours: any[], backlogs: any[], syllabus: a
   });
 
   
-  const pendingBacklogs = backlogs.filter((b: any) => !b.done).length;
-  const clearedBacklogs = backlogs.filter((b: any) => b.done).length;
+  const pendingBacklogs = backlogs.filter((b: BacklogRow) => !b.done).length;
+  const clearedBacklogs = backlogs.filter((b: BacklogRow) => b.done).length;
 
   return {
     tests: { total: tests.length, mains: mainsTests.length, adv: advTests.length, bestScore: bestScore.toFixed(1), avgScore: avgScore.toFixed(1) },
@@ -183,7 +198,7 @@ function calculateStats(tests: any[], hours: any[], backlogs: any[], syllabus: a
   };
 }
 
-function generateReportPDF(name: string, month: string, stats: any, tests: any[], hours: any[]): string {
+function generateReportPDF(name: string, month: string, stats: MonthlyStats, tests: TestRow[], _hours: HourRow[]): string {
   // PDF uses only ASCII-safe characters — no emoji, no unicode box-drawing
   // Colors: background black (0,0,0), accent purple (0.58,0.42,0.97),
   //         green (0.2,0.83,0.6), yellow (0.98,0.75,0.14), red (0.97,0.53,0.53)
@@ -302,7 +317,7 @@ function generateReportPDF(name: string, month: string, stats: any, tests: any[]
     ops.push(txt(380, cy, 8, 0.47, 0.47, 0.56, "PERCENT"));
     cy -= 16;
 
-    tests.slice(0, 8).forEach((t: any, idx: number) => {
+    tests.slice(0, 8).forEach((t: TestRow, idx: number) => {
       if (cy < 60) return;
       const pct = t.max ? ((t.total / t.max) * 100).toFixed(1) : "N/A";
       const rowBg = idx % 2 === 0 ? 0.055 : 0.045;
@@ -363,7 +378,7 @@ function generateReportPDF(name: string, month: string, stats: any, tests: any[]
   return btoa(binary);
 }
 
-function generateEmailHTML(name: string, month: string, stats: any, appUrl: string): string {
+function generateEmailHTML(name: string, month: string, stats: MonthlyStats, appUrl: string): string {
   const phyPct = stats.syllabus.physics.total ? Math.round(stats.syllabus.physics.done / stats.syllabus.physics.total * 100) : 0;
   const chePct = stats.syllabus.chemistry.total ? Math.round(stats.syllabus.chemistry.done / stats.syllabus.chemistry.total * 100) : 0;
   const matPct = stats.syllabus.maths.total ? Math.round(stats.syllabus.maths.done / stats.syllabus.maths.total * 100) : 0;
