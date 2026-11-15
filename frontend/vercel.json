@@ -38,6 +38,7 @@
     { "source": "/favicon.png", "destination": "/assets/icons/favicon.png" },
     { "source": "/icon-152.png", "destination": "/assets/icons/icon-152.png" },
     { "source": "/icon-192.png", "destination": "/assets/icons/icon-192.png" },
+    { "source": "/icon-512.png", "destination": "/assets/icons/icon-512.png" },
     { "source": "/jeetrack-logo-email.png", "destination": "/assets/icons/jeetrack-logo-email.png" },
 
     { "source": "/faq", "destination": "/pages/faq.html" },

@@ -92,6 +92,17 @@
   }
 
   
+
+  @media (hover:hover) {
+    .nav-cta { transition: transform .16s cubic-bezier(.34,1.31,.64,1), filter .16s cubic-bezier(.4,0,.2,1), box-shadow .16s cubic-bezier(.4,0,.2,1); }
+    .nav-cta:hover { transform: translateY(-1px) scale(1.02); filter: brightness(1.08); box-shadow: 0 4px 16px rgba(124,106,247,.35); }
+    .doc a { transition: color .16s cubic-bezier(.4,0,.2,1); }
+    .doc a:hover { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+  }
+  @media (hover:hover) and (prefers-reduced-motion:reduce) {
+    .nav-cta:hover { transform: none; }
+  }
+
   .hero {
     text-align: center;
     padding: 4rem 1.5rem 2.5rem;
@@ -553,7 +564,7 @@
       <p>For privacy questions, data requests, or concerns:</p>
       <div class="contact-box">
         <p style="margin-bottom:0.4rem"><strong>Email:</strong> <a href="https://mail.google.com/mail/?view=cm&fs=1&to=5073340abdulrehmankhandurrani@gmail.com">5073340abdulrehmankhandurrani@gmail.com</a></p>
-        <p style="margin-bottom:0"><strong>GitHub:</strong> <a href="https://github.com/trigxon/JEETrack" target="_blank" rel="noopener">github.com/trigxon/JEETrack</a></p>
+        <p style="margin-bottom:0"><strong>GitHub:</strong> <a href="https://github.com/trigxon/JEEAdvOsint" target="_blank" rel="noopener">github.com/trigxon/JEEAdvOsint</a></p>
       </div>
     </section>
   </article>
@@ -569,6 +580,6 @@
   <p>© 2026 JEE ADV OSINT · <a href="https://jee-adv-osint.vercel.app">Home</a> · <a href="/faq">FAQ</a> · <a href="/terms">Terms</a> · Built for JEE aspirants across India</p>
 </footer>
 
-  <script src="/blob-cursor.js?v=36"></script>
+  <script src="/blob-cursor.js?v=38"></script>
 </body>
 </html>

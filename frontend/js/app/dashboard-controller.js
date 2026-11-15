@@ -4137,8 +4137,38 @@ function mobSettingsTab(id, btn){
   }
 }
 
+// v38 DRAWER TAP-SHIELD LAW (owner report #24: "tapping the More button
+// sometimes triggers buttons inside the popup immediately"). Root cause:
+// on touch devices the browser can dispatch a residual ghost click at the
+// More button's coordinates AFTER openMobDrawer() has already slid the
+// drawer over that exact point (the drawer's grid now sits where the finger
+// was, and a sloppy tap's click lands on whatever is topmost at the
+// coordinates at dispatch time — the drawer item, not the More button);
+// the mirror case bites during close: the sheet slides down across the
+// More button for the whole .32s transition, so a quick re-tap aimed at
+// More activates a still-sliding drawer item instead. One tap, two
+// actions. THE SHIELD: for exactly the animation window (+ buffer) after
+// every open AND every close, a capture-phase click listener on the drawer
+// swallows the click entirely (stopPropagation + preventDefault, so the
+// event dies before ANY item's onclick runs). After the window every
+// item is independently interactive exactly as before — an intentional
+// tap is a separate, later gesture by definition. The overlay is never
+// shielded: tapping outside to dismiss works at all times (idempotent
+// close), and underlying elements stay covered by the overlay until it
+// fully hides (300ms), so nothing beneath can be activated by the close.
+let drawerShieldUntil = 0;
+function drawerShield(ms){
+  drawerShieldUntil = performance.now() + ms;
+  const dr = document.getElementById('mob-drawer');
+  if (dr && !dr.dataset.jtShield){
+    dr.dataset.jtShield = '1';
+    dr.addEventListener('click', (e) => {
+      if (performance.now() < drawerShieldUntil){ e.stopPropagation(); e.preventDefault(); }
+    }, true); // capture: the event dies before reaching any item's onclick
+  }
+}
+
 function openMobDrawer(){
-  
   const todoBadge = document.getElementById('nb-todo');
   const drawerTodo = document.getElementById('drawer-badge-todo');
   if(todoBadge && drawerTodo){
@@ -4158,6 +4188,7 @@ function openMobDrawer(){
   if(ov){ ov.style.display='block'; requestAnimationFrame(()=>ov.classList.add('open')); }
   if(dr){ dr.classList.add('open'); }
   document.body.style.overflow='hidden';
+  drawerShield(430); // .32s slide-up + ghost-click buffer
 }
 function closeMobDrawer(){
   const ov = document.getElementById('mob-drawer-overlay');
@@ -4165,6 +4196,7 @@ function closeMobDrawer(){
   if(ov){ ov.classList.remove('open'); setTimeout(()=>{ if(!ov.classList.contains('open')) ov.style.display='none'; },300); }
   if(dr) dr.classList.remove('open');
   document.body.style.overflow='';
+  drawerShield(430); // .32s slide-down: sliding items can't eat the re-tap aimed at More
 }
 function drawerNav(page){
   nav(page);

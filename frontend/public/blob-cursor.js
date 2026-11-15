@@ -1,4 +1,45 @@
-// blob-cursor.js v36 — "the premium-feel law + fade ownership".
+// blob-cursor.js v38 — "the measured-breath law".
+//
+//  27. THE v38 MEASURED-BREATH LAW (owner report #24: "reduce blob size
+//      slightly on desktop — preserve the visual identity, do not make it
+//      too small, keep it balanced at every resolution"). The desktop
+//      cursor breathes slightly smaller: dot 17px -> 15px, halo 56px ->
+//      50px (~12% off both, proportionally matched so the layered-glow
+//      identity is untouched — same pink, same shadows, same ring burst).
+//      Stage math is unchanged (72px/192px stages, halves 36/96) so every
+//      transform, pop, and rect-center truth law carries over verbatim;
+//      the dot-in-stage offsets re-center for the new sizes. The touch
+//      glow keeps every v35-tuned size — mobile feedback was re-tuned to
+//      feel, not to pixels, and report #24 asked for the DESKTOP blob
+//      only. Everything else is the shipped v37 press-target law,
+//      unchanged.
+//
+//  26. THE v37 PRESS-TARGET LAW (owner report #23: "that touch blob is
+//      very sensitive, make it standard, and it should only be seen while
+//      pressing any button, understood, make it smart"). v22-v36 fired the
+//      tap glow on EVERY touchstart ANYWHERE — hero text, empty wallpaper,
+//      every fling of every scroll: swipe a marketing page and a pink
+//      bloom erupted under the finger each time. No OS does that; touch
+//      feedback belongs to CONTROLS. The law:
+//      (a) THE GATE — a contact gets feedback only when the touched
+//          element is a control (the ONE shared pressable set,
+//          __JT_PRESSABLE — the same list the desktop engine pops on, so
+//          hover-pop targets and touch-glow targets can never drift
+//          apart). Taps on plain content show NOTHING.
+//      (b) THE LIFT-OFF — the finger sliding OFF the pressed control ends
+//          the feedback early: quiet fade, no release bloom (the bloom
+//          celebrates a completed press; this one was abandoned). Native
+//          lift-off semantics — and it retires the glow correctly when a
+//          press turns into a scroll.
+//      (c) THE RE-ENTRY — sliding back ONTO the control while still down
+//          brings the glow back same-frame (iOS re-highlight), no new
+//          ripple.
+//      (d) Synthetic/forwarded contacts whose target is not an Element
+//          (harnesses, embedders dispatching on window) are hit-tested at
+//          the actual contact point — the law is about WHERE the finger
+//          is, not who dispatched the event.
+//      Everything else is the shipped v36 fade-ownership + premium-feel
+//      law, unchanged.
 //
 //  25. THE v36 FADE-OWNERSHIP LAW (found live while proving v35: jt_v26 D2
 //      raced the glow watchdog's 2500ms tick INSIDE the 260ms release-bloom
@@ -682,6 +723,14 @@ function __jtMotionKill() { // teardown only: restore instantly, drop every ref
 //     never leak into touch;
 //   - hide on up/cancel/leave/tab-hide + a 2.5s watchdog — a stuck mobile
 //     dot is impossible (the v15 lesson, enforced structurally).
+// v37 THE ONE PRESSABLE SET — the shared definition of "what counts as a
+// control". The touch glow's press gate and the desktop engine's hover pop
+// read the SAME list, so a hover-pop target and a touch-glow target are the
+// same element by construction — the two engines can never disagree about
+// what is pressable. (The suites inline a copy of this list for their own
+// elementFromPoint scans — keep them in sync when this changes.)
+var __JT_PRESSABLE = 'a, button, input, select, textarea, label, summary, [role="button"], [role="radio"], [role="tab"], [role="menuitem"], [role="link"], [role="checkbox"], [onclick], .ob-opt, .btn';
+
 function initTouchGlow(){
   'use strict';
   if (window.__jtTouchGlow) return;
@@ -849,6 +898,14 @@ function initTouchGlow(){
   // touch feedback. The fade path owns the hide while fading; the watchdog
   // keeps every genuinely-stuck case (missed pointerup, 3s no-activity).
   let fading = false;
+  // v37 PRESS-TARGET STATE: pressEl is the control this press belongs to
+  // (set by the down gate, cleared by lift). It deliberately OUTLIVES
+  // cancel()/hide(): a slide-off-cancelled or watchdog-faded press is still
+  // a LIVE press (pid set) — the finger moving back over the control (or
+  // moving at all after a watchdog fade) must bring the glow back (the
+  // re-entry law + the v23 drag re-show law, subsumed).
+  let pressEl = null;
+  let lastPressTest = 0, lastPressOver = true; // 40ms hit-test throttle
   let lastAct = 0;                   // last real down/move (the v22 freeze law)
   let motionOn = false;              // v33: this module's blob-motion ref
   let mx = -300, my = -300;
@@ -894,12 +951,42 @@ function initTouchGlow(){
     } catch (e) {}
   }
 
+  // v37 PRESS-TARGET helpers ----------------------------------------------
+  function pressTargetFrom(target, x, y) {
+    // Real input always carries an Element target. Synthetic/forwarded
+    // contacts (test harnesses, embedders) may carry window or document —
+    // hit-test the actual point for those instead of refusing feedback:
+    // the law is about WHERE the finger is, not who dispatched the event.
+    if (target && target.closest) return target.closest(__JT_PRESSABLE);
+    if (typeof document.elementFromPoint === 'function') {
+      const el = document.elementFromPoint(x, y);
+      return (el && el.closest) ? el.closest(__JT_PRESSABLE) : null;
+    }
+    return null;
+  }
+  function overPressEl(x, y) {
+    // Is the contact still on the pressed control? Throttled to one
+    // elementFromPoint per 40ms (bounded layout cost during press-drags —
+    // the v33 lesson from the desktop engine); a control unmounted
+    // mid-press counts as left (SPA re-render).
+    if (!pressEl) return false;
+    if (!pressEl.isConnected) return false;
+    const now = performance.now();
+    if (now - lastPressTest < 40) return lastPressOver;
+    lastPressTest = now;
+    if (typeof document.elementFromPoint !== 'function') { lastPressOver = true; return true; }
+    const hit = document.elementFromPoint(x, y);
+    lastPressOver = !!(hit && pressEl.contains(hit));
+    return lastPressOver;
+  }
+
   function show(x, y, id) {
     pid = id;
     fading = false;                // v35: a new contact reclaims ownership
     lastAct = performance.now();
     mx = gx = x; my = gy = y; gvx = gvy = 0;
     scale = 0.55; scaleVel = 0; target = PRESS;  // born small, blooms out
+    lastPressTest = 0; lastPressOver = true; // v37: a fresh press is ON its control by definition; the first move hit-tests immediately
     clearTimeout(fadeTimer);
     if (!visible) {
       visible = true;
@@ -922,29 +1009,70 @@ function initTouchGlow(){
   function move(x, y) {
     mx = x; my = y;
     lastAct = performance.now();
-    // v23 DRAG RE-SHOW: a pointermove of the tracked id means the finger is
-    // demonstrably still down. If the 3s watchdog faded a held-still glow,
-    // the rest of the drag must not run glow-less — bring it back.
-    if (!visible) {
-      clearTimeout(fadeTimer);
-      visible = true;
-      window.__jtTouchGlowActive = true; // v29 law
-      document.documentElement.classList.add('blob-touch-live'); // v26 law
-      wrap.classList.add('tg-on');
-      gx = mx; gy = my; gvx = gvy = 0;
+    // v37 PRESS-TARGET LAW — the glow follows a PRESS, not a finger:
+    if (!overPressEl(x, y)) {
+      // Off the control (or the control unmounted): a visible glow lifts
+      // quietly; an already-hidden one stays hidden. pid + pressEl stay
+      // live so re-entry can bring the glow back and pointerup cleans up.
+      if (visible) cancel();
+      return;
     }
+    if (!visible) { resume(); return; } // re-entry (or the v23 drag re-show law)
     paintDot();                    // zero lag, the prime directive
     paintGlow();                   // v34: the halo too — glued under the finger
     wake();
   }
+  function cancel() {
+    // v37 SLIDE-OFF LIFT: quiet fade, cursor law stripped, NO release
+    // bloom (the press was abandoned, not completed). The press stays
+    // TRACKED (pid, pressEl) for re-entry while the finger is still down.
+    visible = false;
+    window.__jtTouchGlowActive = false; // v29 law
+    document.documentElement.classList.remove('blob-touch-live'); // v26 law
+    wrap.classList.remove('tg-on');     // the .38s soft fade takes it away
+    clearTimeout(fadeTimer);
+    fading = false;
+    target = 1;                         // settle flat — nothing to celebrate
+    if (motionOn) { motionOn = false; __jtMotionOff(); }
+  }
+  function resume() {
+    // v37 RE-ENTRY (subsumes the v23 drag re-show law): the finger is back
+    // over its control, or a watchdog-faded hold moved again. Soft
+    // same-frame return — no new ripple, no fresh bloom-in; the glow just
+    // IS there again, as if the press never left.
+    fading = false;
+    clearTimeout(fadeTimer);
+    gx = mx; gy = my; gvx = gvy = 0;
+    target = PRESS;
+    if (!visible) {
+      visible = true;
+      window.__jtTouchGlowActive = true; // v29 law
+      document.documentElement.classList.add('blob-touch-live'); // v26 law
+      wrap.classList.add('tg-on');
+    }
+    if (!motionOn) { motionOn = true; __jtMotionOn(); }
+    paintDot(); paintGlow();
+    wake();
+  }
   function lift() {
     pid = null;
+    pressEl = null;                // v37: the press is over — re-entry is dead
     fading = true;                 // v35: the fade path owns the hide now
     target = 1.8;                   // v35: full release bloom (was 1.45) …
     clearTimeout(fadeTimer);
     fadeTimer = setTimeout(hide, 260); // … and hold it 260ms (was 140) so the
     // overshoot actually plays before the soft .38s fade takes it away.
     wake();
+  }
+  function liftQuiet() {
+    // v37: an ABANDONED press end — pointercancel (the OS stole the touch
+    // for a scroll) or touchcancel. The press did not complete, so there is
+    // nothing to celebrate: same quiet fade as slide-off, no release bloom,
+    // and the tracking dies with the pointer (a canceled pointer can send
+    // no more moves — re-entry is impossible by definition).
+    pid = null;
+    pressEl = null;
+    if (visible) cancel();
   }
   function hide() {
     // v26: strip the cursor law FIRST — if anything below throws, the worst
@@ -1001,6 +1129,13 @@ function initTouchGlow(){
       // pen drive BOTH engines: blob + glow, two pink pointers on every
       // stylus device — the exact "double cursor" report).
       if (e.pointerType && e.pointerType !== 'touch') return;
+      // v37 PRESS-TARGET LAW: feedback is for CONTROLS. A contact on plain
+      // content — text, wallpaper, a swipe across the hero — shows NOTHING
+      // (the every-touch "very sensitive" glow is gone). The touched
+      // element decides; window/document-targeted contacts are hit-tested.
+      const el = pressTargetFrom(e.target, e.clientX, e.clientY);
+      if (!el) return;
+      pressEl = el;
       show(e.clientX, e.clientY, e.pointerId);
     }, { passive: true, capture: true });
     window.addEventListener('pointermove', (e) => {
@@ -1017,20 +1152,50 @@ function initTouchGlow(){
       }
       move(e.clientX, e.clientY);
     }, { passive: true });
-    const end = (e) => { if (e.pointerId === pid) lift(); };
+    const end = (e) => {
+      if (e.pointerId !== pid) return;
+      // v37: pointerUP completes the press (release bloom); pointerCANCEL
+      // was the OS stealing the touch (scroll takeover) — abandoned press,
+      // quiet fade.
+      if (e.type === 'pointercancel') liftQuiet(); else lift();
+    };
     window.addEventListener('pointerup', end, { passive: true });
     window.addEventListener('pointercancel', end, { passive: true });
   } else {
     window.addEventListener('touchstart', (e) => {
+      if (window.__jtBlobStore && window.__jtBlobStore.disabled) return; // v24 settings off
       const t = e.changedTouches && e.changedTouches[0];
-      if (t) show(t.clientX, t.clientY, t.identifier);
+      if (!t) return;
+      // v37 PRESS-TARGET LAW — the same gate as the pointer path.
+      const el = pressTargetFrom(e.target, t.clientX, t.clientY);
+      if (!el) return;
+      pressEl = el;
+      show(t.clientX, t.clientY, t.identifier);
     }, { passive: true, capture: true });
     window.addEventListener('touchmove', (e) => {
-      const t = e.changedTouches && e.changedTouches[0];
-      if (t) move(t.clientX, t.clientY);
+      // v37: only the TRACKED press drives the glow — a second finger
+      // dragging over plain content must not steer or resurrect it.
+      if (pid === null) return;
+      const list = e.changedTouches;
+      if (!list) return;
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].identifier === pid) { move(list[i].clientX, list[i].clientY); return; }
+      }
     }, { passive: true });
-    window.addEventListener('touchend', lift, { passive: true });
-    window.addEventListener('touchcancel', lift, { passive: true });
+    const endT = (e) => {
+      if (pid === null) return;    // v37: only the tracked touch lifts the glow
+      const list = e.changedTouches;
+      let ours = !list;            // no list (ancient engine) — assume ours
+      if (list) {
+        for (let i = 0; i < list.length; i++) {
+          if (list[i].identifier === pid) { ours = true; break; }
+        }
+      }
+      if (!ours) return;
+      if (e.type === 'touchcancel') liftQuiet(); else lift(); // v37: cancel = quiet
+    };
+    window.addEventListener('touchend', endT, { passive: true });
+    window.addEventListener('touchcancel', endT, { passive: true });
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); });
   // Watchdog (v22): any glow with no live touch for 3s gets faded — whether
@@ -1061,9 +1226,9 @@ function initTouchGlow(){
 
   // Support marker (see header note 13): the admin engine chip reads this
   // out of the SERVED file and compares it with the ?v= the page loaded.
-  window.__BLOB_CURSOR_VERSION = 'v36';
+  window.__BLOB_CURSOR_VERSION = 'v38';
   try {
-    console.info('%c\u25C8 JEE ADV OSINT \u2014 cursor engine v36 (fade-ownership + premium-feel: reduced-motion keeps the full cursor, instant tap feedback + ripple, unmissable hover pop + ring burst, expressive glued glide, scoped inline motion-relief; zero-latency glide, butter-everywhere, visual-truth, coherence-heartbeat, pointer-class, glow-active, solo-cursor, parachute law)',
+    console.info('%c\u25C8 JEE ADV OSINT \u2014 cursor engine v38 (measured-breath + press-target + fade-ownership + premium-feel: touch feedback only on real controls with native lift-off/re-entry, reduced-motion keeps the full cursor, instant tap feedback + ripple, unmissable hover pop + ring burst, expressive glued glide, scoped inline motion-relief; zero-latency glide, butter-everywhere, visual-truth, coherence-heartbeat, pointer-class, glow-active, solo-cursor, parachute law)',
       'color:#f472b6;font-weight:700');
   } catch (e) {}
 
@@ -1128,7 +1293,7 @@ function initTouchGlow(){
   (function parachuteCheck() {
     try {
       if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistrations) return;
-      var GUARD = 'blobParachute:36';
+      var GUARD = 'blobParachute:38';
       try { if (sessionStorage.getItem(GUARD)) return; } catch (e0) {}
       navigator.serviceWorker.getRegistrations().then(function (regs) {
         var waiting = null;
@@ -1154,7 +1319,7 @@ function initTouchGlow(){
   (function focusReprobe() {
     try {
       if (!window.fetch) return;
-      var GUARD2 = 'blobProbe2:36';
+      var GUARD2 = 'blobProbe2:38';
       var expected2 = null;
       try { expected2 = document.currentScript
         ? new URL(document.currentScript.src).searchParams.get('v') : null;
@@ -1558,12 +1723,13 @@ function initTouchGlow(){
          dot's PAINTED CENTER is the pointer, verifiably so by rect. */
       left: 0; top: 0; will-change: transform;
     }
-    /* 17px dot, NO outline/ring (user request). Visibility comes from size
-       plus layered soft glow shadows — soft edges never read as an outline
-       and cannot shimmer in compressed screen recordings. */
+    /* 15px dot (v38 measured-breath: was 17px — slightly smaller, still
+       unmistakable), NO outline/ring (user request). Visibility comes from
+       size plus layered soft glow shadows — soft edges never read as an
+       outline and cannot shimmer in compressed screen recordings. */
     #custom-cursor .jt-dot {
-      position: absolute; width: 17px; height: 17px;
-      left: 27.5px; top: 27.5px; border-radius: 50%;
+      position: absolute; width: 15px; height: 15px;
+      left: 28.5px; top: 28.5px; border-radius: 50%;
       background: rgba(244, 114, 182, 1);
       transform-origin: 50% 50%; will-change: transform;
       box-shadow:
@@ -1577,8 +1743,8 @@ function initTouchGlow(){
       left: 0; top: 0; will-change: transform;
     }
     #custom-cursor .jt-glow {
-      position: absolute; width: 56px; height: 56px;
-      left: 68px; top: 68px; border-radius: 50%;
+      position: absolute; width: 50px; height: 50px;
+      left: 71px; top: 71px; border-radius: 50%;
       background: radial-gradient(circle,
         rgba(244, 114, 182, 0.55) 0%,
         rgba(244, 114, 182, 0.28) 34%,
@@ -1586,12 +1752,13 @@ function initTouchGlow(){
         rgba(244, 114, 182, 0) 72%);
       transform-origin: 50% 50%; will-change: transform;
     }
-    /* v35 RING BURST — 30px ring centered on the dot inside the 72px dot
-       stage; the WAAPI burst scales it to ~2.15x (65px, inside the stage)
-       while fading. Lives at rest opacity 0 (invisible until fired). */
+    /* v35 RING BURST — 28px ring (v38: was 30px, matches the smaller dot)
+       centered on the dot inside the 72px dot stage; the WAAPI burst
+       scales it to ~2.15x (~60px, inside the stage) while fading. Lives at
+       rest opacity 0 (invisible until fired). */
     #custom-cursor .jt-ring {
-      position: absolute; width: 30px; height: 30px;
-      left: 21px; top: 21px; border-radius: 50%;
+      position: absolute; width: 28px; height: 28px;
+      left: 22px; top: 22px; border-radius: 50%;
       border: 1.5px solid rgba(244, 114, 182, 0.9);
       opacity: 0; transform: scale(0.7);
       pointer-events: none; will-change: transform, opacity;
@@ -2098,7 +2265,7 @@ function initTouchGlow(){
   // animated content under a still pointer can never pulse the blob);
   // scroll suppresses pops for SCROLL_SUPPRESS_MS; a fast pointer relaxes
   // instead of popping (calm across menus/text; pops the instant it lands).
-  const INTERACTIVE = 'a, button, input, select, textarea, label, summary, [role="button"], [role="radio"], [role="tab"], [role="menuitem"], [role="link"], [role="checkbox"], [onclick], .ob-opt, .btn';
+  const INTERACTIVE = __JT_PRESSABLE; // v37: the ONE shared pressable set — hover-pop targets and touch-glow targets are the same elements by construction
   let lastHoverX = -1, lastHoverY = -1;
   let fastUntil = 0; // pointer is "fast" until this timestamp (hysteresis)
   let lastHoverEval = 0; // v24: hit-test throttle timestamp

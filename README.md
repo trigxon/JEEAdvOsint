@@ -13,7 +13,7 @@
 
 <br/>
 
-[![Launch App](https://img.shields.io/badge/⚡%20Launch%20App-jee-adv-osint.vercel.app-6366f1?style=for-the-badge&logoColor=white)](https://jee-adv-osint.vercel.app)
+[![Launch App](https://img.shields.io/badge/%E2%9A%A1%20Launch%20App-jee--adv--osint.vercel.app-6366f1?style=for-the-badge&logoColor=white)](https://jee-adv-osint.vercel.app)
 
 <br/>
 
@@ -61,6 +61,14 @@
   <img src="screenshots/ai-insights-2.png" alt="AI Insights Report" width="48%" />
   <br/><br/>
   <sub><i>AI-powered coaching analysis &nbsp;·&nbsp; Personalised subject report &amp; action plan</i></sub>
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="screenshots/support.png" alt="Support JEE ADV OSINT" width="90%" />
+  <br/><br/>
+  <sub><i>Support page — keep JEE ADV OSINT free, forever</i></sub>
 </div>
 
 <br/>
@@ -169,7 +177,7 @@ JEE ADV OSINT/
 ### 1 · Clone the repository
 
 ```bash
-git clone https://github.com/trigxon/JEETrack.git
+git clone https://github.com/trigxon/JEEAdvOsint.git
 cd JEE ADV OSINT
 ```
 
@@ -293,9 +301,11 @@ Issues and pull requests are welcome — for major changes, please open an issue
 
 ---
 
-## 👨‍💻 Author
+## 👨‍💻 Author & Owner
 
-**Abdul Rehman Khan Durrani** · [@trigxon](https://github.com/trigxon)
+**Abdul Rehman Khan Durrani (ARK DURRANI)** · [@trigxon](https://github.com/trigxon)
+
+The original idea, creative direction, product design, customisation and deployment of **JEE ADV OSINT** belong to **@trigxon**. The complete GitHub repo: **[trigxon/JEEAdvOsint](https://github.com/trigxon/JEEAdvOsint)**.
 
 ## 📄 License & Attribution
 
@@ -316,7 +326,7 @@ JEE ADV OSINT is a whitelabelled deployment of [**JEETrack**](https://github.com
 <br/>
 <br/>
 
-[![Launch App](https://img.shields.io/badge/⚡%20Launch%20App-jee-adv-osint.vercel.app-6366f1?style=for-the-badge&logoColor=white)](https://jee-adv-osint.vercel.app)
+[![Launch App](https://img.shields.io/badge/%E2%9A%A1%20Launch%20App-jee--adv--osint.vercel.app-6366f1?style=for-the-badge&logoColor=white)](https://jee-adv-osint.vercel.app)
 
 <br/>
 

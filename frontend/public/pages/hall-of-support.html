@@ -47,7 +47,8 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--am);outline-offset:
 .nav-logo span{background:linear-gradient(135deg,#a695ff,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .nav-links{display:flex;gap:.2rem;align-items:center;margin-left:auto}
 .nav-links a{color:var(--mu);text-decoration:none;font-size:.8rem;padding:.55rem .75rem;border-radius:8px;transition:color .15s,background .15s}
-@media(hover:hover){.nav-links a:hover{color:var(--tx);background:rgba(255,255,255,.06)}}
+@media(hover:hover){.nav-links a:hover{color:var(--tx);background:rgba(255,255,255,.06);transform:translateY(-1px)}}
+@media(hover:hover) and (prefers-reduced-motion:reduce){.nav-links a:hover,.nav-cta:hover{transform:none}}
 .nav-links a.active{color:var(--pk)}
 .nav-cta{background:var(--am);color:#241707;font-weight:700;text-decoration:none;padding:.5rem 1.1rem;border-radius:8px;font-size:.82rem;white-space:nowrap}
 
@@ -554,6 +555,6 @@ function observeImpactCard(){
 }
 </script>
 
-  <script src="/blob-cursor.js?v=36"></script>
+  <script src="/blob-cursor.js?v=38"></script>
 </body>
 </html>

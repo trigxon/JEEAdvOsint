@@ -124,11 +124,11 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;min-h
 .nav-logo{font-family:'Syne',sans-serif;font-size:1.15rem;font-weight:800;text-decoration:none;color:var(--tx);letter-spacing:-.02em}
 .nav-logo span{background:linear-gradient(135deg,#a695ff,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .nav-links{display:flex;gap:2px}
-.nav-links a{color:var(--mu);text-decoration:none;font-size:.85rem;font-weight:500;padding:.45rem .85rem;border-radius:8px;transition:all .15s}
-.nav-links a:hover{color:var(--tx);background:rgba(255,255,255,.05)}
+.nav-links a{color:var(--mu);text-decoration:none;font-size:.85rem;font-weight:500;padding:.45rem .85rem;border-radius:8px;transition:color .18s cubic-bezier(.4,0,.2,1),background-color .18s cubic-bezier(.4,0,.2,1),transform .18s cubic-bezier(.4,0,.2,1)}
+@media(hover:hover){.nav-links a:hover{color:var(--tx);background:rgba(255,255,255,.06);transform:translateY(-1px)}}
 .nav-links a.active{color:var(--ac2)}
-.nav-cta{background:linear-gradient(135deg,var(--ac),var(--pk));color:#fff;text-decoration:none;padding:.5rem 1.15rem;border-radius:8px;font-size:.83rem;font-weight:600;transition:opacity .15s;white-space:nowrap}
-.nav-cta:hover{opacity:.85}
+.nav-cta{background:linear-gradient(135deg,var(--ac),var(--pk));color:#fff;text-decoration:none;padding:.5rem 1.15rem;border-radius:8px;font-size:.83rem;font-weight:600;transition:transform .16s cubic-bezier(.34,1.31,.64,1),filter .16s cubic-bezier(.4,0,.2,1),box-shadow .16s cubic-bezier(.4,0,.2,1);white-space:nowrap}
+@media(hover:hover){.nav-cta:hover{transform:translateY(-1px) scale(1.02);filter:brightness(1.08);box-shadow:0 4px 16px rgba(124,106,247,.35)}}
 
 
 .hero{position:relative;padding:6rem 2.5rem 5rem;text-align:center;overflow:hidden}
@@ -359,6 +359,6 @@ function toggle(btn) {
 }
 </script>
 
-  <script src="/blob-cursor.js?v=36"></script>
+  <script src="/blob-cursor.js?v=38"></script>
 </body>
 </html>
